@@ -1,0 +1,617 @@
+---
+title: "Untitled"
+format: html
+editor: visual
+excecute: 
+  cache: true
+---
+
+```{r, cache=TRUE}
+library(reticulate)
+library(tidyverse)
+
+set.seed(100)
+
+epstein_comments_rds<-readRDS("C:/Users/Owner/Documents/epstein_comments.rds")
+immig_comments_rds<-readRDS("C:/Users/Owner/Documents/immig_comments.rds")
+econ_comments_rds<-readRDS("C:/Users/Owner/Documents/econ_comments.rds")
+trump_comments_rds<-readRDS("C:/Users/Owner/Documents/trump_comments.rds")
+bernie_comments_rds<-readRDS("C:/Users/Owner/Documents/bernie_comments.rds")
+harris_comments_rds<-readRDS("C:/Users/Owner/Documents/harris_comments.rds")
+vance_comments_rds<-readRDS("C:/Users/Owner/Documents/vance_comments.rds")
+mamdani_comments_rds<-readRDS("C:/Users/Owner/Documents/mamdani_comments.rds")
+newsom_comments_rds<-readRDS("C:/Users/Owner/Documents/newsom_comments.rds")
+musk_comments_rds<-readRDS("C:/Users/Owner/Documents/elon_comments.rds")
+
+```
+
+You can add options to executable code like this
+
+```{r}
+torch<-py_require("torch")
+transformers <- py_require(c("transformers"))
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).#
+
+```{python}
+
+from transformers import pipeline
+
+pipe = pipeline("text-classification", model="Lakssssshya/roberta-large-goemotions")
+
+
+import torch
+import torch.nn as nn
+from transformers import RobertaTokenizer
+from transformers import RobertaModel
+from huggingface_hub import hf_hub_download
+import json
+import numpy as np
+
+import random
+import pickle
+#import pandas as pd
+random.seed(100)
+
+
+```
+
+```{python, cache=TRUE}
+# Step 1: Define the model architecture
+class RobertaForMultiLabelClassification(nn.Module):
+    def __init__(self, model_name, num_labels, dropout_rate=0.3, use_mean_pooling=True):
+        super().__init__()
+        self.roberta = RobertaModel.from_pretrained(model_name)
+        self.use_mean_pooling = use_mean_pooling
+        hidden_size = self.roberta.config.hidden_size
+        self.dropout1 = nn.Dropout(dropout_rate)
+        self.fc1 = nn.Linear(hidden_size, hidden_size // 2)
+        self.relu = nn.ReLU()
+        self.dropout2 = nn.Dropout(dropout_rate)
+        self.fc2 = nn.Linear(hidden_size // 2, num_labels)
+    def mean_pooling(self, token_embeddings, attention_mask):
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+        sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
+        sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+        return sum_embeddings / sum_mask
+    def forward(self, input_ids, attention_mask):
+        outputs = self.roberta(input_ids, attention_mask=attention_mask)
+        if self.use_mean_pooling:
+            pooled_output = self.mean_pooling(outputs.last_hidden_state, attention_mask)
+        else:
+            pooled_output = outputs.pooler_output
+        x = self.dropout1(pooled_output)
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.dropout2(x)
+        logits = self.fc2(x)
+        return logits
+# Step 2: Load model
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model_name = "Lakssssshya/roberta-large-goemotions"
+tokenizer = RobertaTokenizer.from_pretrained(model_name)
+# Load config
+config_path = hf_hub_download(repo_id=model_name, filename="config.json")
+with open(config_path, 'r') as f:
+    config = json.load(f)
+model = RobertaForMultiLabelClassification(
+    model_name='roberta-large',
+    num_labels=config['num_labels'],
+    dropout_rate=config.get('dropout_rate', 0.3),
+    use_mean_pooling=config.get('use_mean_pooling', True)
+)
+# Load weights
+weights_path = hf_hub_download(repo_id=model_name, filename="pytorch_model.bin")
+state_dict = torch.load(weights_path, map_location=device)
+model.load_state_dict(state_dict)
+model.to(device)
+model.eval()
+# Load thresholds
+thresholds_path = hf_hub_download(repo_id=model_name, filename="optimal_thresholds.json")
+with open(thresholds_path, 'r') as f:
+    thresholds = np.array(json.load(f))
+# Emotion labels
+emotion_labels = [
+    'admiration', 'amusement', 'anger', 'annoyance', 'approval', 
+    'caring', 'confusion', 'curiosity', 'desire', 'disappointment',
+    'disapproval', 'disgust', 'embarrassment', 'excitement', 'fear',
+    'gratitude', 'grief', 'joy', 'love', 'nervousness',
+    'optimism', 'pride', 'realization', 'relief', 'remorse',
+    'sadness', 'surprise', 'neutral'
+]
+# Step 3: Predict
+def predict_emotions(text):
+    inputs = tokenizer(text, return_tensors='pt', truncation=True, max_length=128, padding=True)
+    inputs = {k: v.to(device) for k, v in inputs.items()}
+    
+    with torch.no_grad():
+        logits = model(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'])
+        probs = torch.sigmoid(logits).cpu().numpy()[0]
+    
+    # Apply optimized thresholds
+    predictions = (probs > thresholds).astype(int)
+    
+    # Get predicted emotions
+    predicted_emotions = [emotion_labels[i] for i in range(len(predictions)) if predictions[i] == 1]
+    
+    # Get top emotions with scores
+    top_indices = np.argsort(probs)[::-1][:5]
+    top_emotions = [(emotion_labels[idx], float(probs[idx])) for idx in top_indices]
+    
+    return {
+        'predicted_emotions': predicted_emotions,
+        'top_emotions': top_emotions
+    }
+```
+
+### Example:
+
+```{python}
+# Example usage
+text = "I'm so proud and excited about this achievement!"
+result = predict_emotions(text)
+print(f"Text: {text}")
+print(f"Predicted emotions: {result['predicted_emotions']}")
+print(f"Top 5 emotions: {result['top_emotions']}")
+```
+
+### Epstein:
+
+```{python}
+
+epstein_comments_pyth = r.epstein_comments_rds
+
+epstein_predict_emotions = predict_emotions(epstein_comments_pyth)
+print(f"Top 5 emotions: {epstein_predict_emotions['top_emotions']}")
+
+epstein_top_5 = (f"Top 5 emotions: {epstein_predict_emotions['top_emotions']}")
+print(epstein_top_5)
+
+with open("epstein_top_5.pkl", "wb") as f:
+    pickle.dump(epstein_top_5, f)
+
+```
+
+### Immigration:
+
+```{python}
+
+immig_comments_pyth = r.immig_comments_rds
+
+immig_predict_emotions = predict_emotions(immig_comments_pyth)
+print(f"Top 5 emotions: {immig_predict_emotions['top_emotions']}")
+
+immig_top_5 = (f"Top 5 emotions: {immig_predict_emotions['top_emotions']}")
+print(immig_top_5)
+
+with open("immig_top_5.pkl", "wb") as f:
+    pickle.dump(immig_top_5, f)
+
+```
+
+### Economy:
+
+```{python}
+
+econ_comments_pyth = r.econ_comments_rds
+
+econ_predict_emotions = predict_emotions(econ_comments_pyth)
+print(f"Top 5 emotions: {econ_predict_emotions['top_emotions']}")
+
+econ_top_5 = (f"Top 5 emotions: {econ_predict_emotions['top_emotions']}")
+print(econ_top_5)
+
+with open("econ_top_5.pkl", "wb") as f:
+    pickle.dump(econ_top_5, f)
+
+
+```
+
+### Trump:
+
+```{python}
+
+trump_comments_pyth = r.trump_comments_rds
+
+trump_predict_emotions = predict_emotions(trump_comments_pyth)
+print(f"Top 5 emotions: {trump_predict_emotions['top_emotions']}")
+
+trump_top_5 = (f"Top 5 emotions: {trump_predict_emotions['top_emotions']}")
+print(trump_top_5)
+
+with open("trump_top_5.pkl", "wb") as f:
+    pickle.dump(trump_top_5, f)
+
+
+```
+
+### Bernie:
+
+```{python}
+
+bernie_comments_pyth = r.bernie_comments_rds
+
+bernie_predict_emotions = predict_emotions(bernie_comments_pyth)
+print(f"Top 5 emotions: {bernie_predict_emotions['top_emotions']}")
+
+bernie_top_5 = (f"Top 5 emotions: {bernie_predict_emotions['top_emotions']}")
+print(bernie_top_5)
+
+with open("bernie_top_5.pkl", "wb") as f:
+    pickle.dump(bernie_top_5, f)
+
+```
+
+### Harris:
+
+```{python}
+
+harris_comments_pyth = r.harris_comments_rds
+
+harris_predict_emotions = predict_emotions(harris_comments_pyth)
+print(f"Top 5 emotions: {harris_predict_emotions['top_emotions']}")
+
+harris_top_5 = (f"Top 5 emotions: {harris_predict_emotions['top_emotions']}")
+print(harris_top_5)
+
+with open("harris_top_5.pkl", "wb") as f:
+    pickle.dump(harris_top_5, f)
+
+```
+
+### Vance:
+
+```{python}
+
+vance_comments_pyth = r.vance_comments_rds
+
+vance_predict_emotions = predict_emotions(vance_comments_pyth)
+print(f"Top 5 emotions: {vance_predict_emotions['top_emotions']}")
+
+vance_top_5 = (f"Top 5 emotions: {vance_predict_emotions['top_emotions']}")
+print(vance_top_5)
+
+with open("vance_top_5.pkl", "wb") as f:
+    pickle.dump(vance_top_5, f)
+
+
+```
+
+### Mamdani:
+
+```{python}
+
+mamdani_comments_pyth = r.mamdani_comments_rds
+
+mamdani_predict_emotions = predict_emotions(mamdani_comments_pyth)
+print(f"Top 5 emotions: {mamdani_predict_emotions['top_emotions']}")
+
+mamdani_top_5 = (f"Top 5 emotions: {mamdani_predict_emotions['top_emotions']}")
+print(mamdani_top_5)
+
+with open("mamdani_top_5.pkl", "wb") as f:
+    pickle.dump(mamdani_top_5, f)
+
+```
+
+### Newsom:
+
+```{python}
+
+newsom_comments_pyth = r.newsom_comments_rds
+
+newsom_predict_emotions = predict_emotions(newsom_comments_pyth)
+print(f"Top 5 emotions: {newsom_predict_emotions['top_emotions']}")
+
+newsom_top_5 = (f"Top 5 emotions: {newsom_predict_emotions['top_emotions']}")
+print(newsom_top_5)
+
+with open("newsom_top_5.pkl", "wb") as f:
+    pickle.dump(newsom_top_5, f)
+
+```
+
+### Musk:
+
+```{python}
+
+musk_comments_pyth = r.musk_comments_rds
+
+musk_predict_emotions = predict_emotions(musk_comments_pyth)
+print(f"Top 5 emotions: {musk_predict_emotions['top_emotions']}")
+
+musk_top_5 = (f"Top 5 emotions: {musk_predict_emotions['top_emotions']}")
+print(musk_top_5)
+
+with open("musk_top_5.pkl", "wb") as f:
+    pickle.dump(musk_top_5, f)
+
+```
+
+```{r, cache=TRUE}
+save.image()
+library(reticulate)
+
+pos_emotions<-c("admiration","amusement","\\bapproval\\b","caring","curiosity","desire","excitement","gratitude","joy","love","optimism","pride","realization","relief")
+pos_emotions <- paste(pos_emotions, collapse = "|")
+
+neg_emotions<-c("anger", "annoyance", "confusion", "disappointment", "disapproval", "disgust", "embarrassment", "fear", "grief", "nervousness", "remorse", "sadness", "surprise")
+neg_emotions <- paste(neg_emotions, collapse = "|")
+
+neutral<-c("neutral")
+
+Rank<-1:5
+
+###################################################################################
+
+epstein_top_5.r <- py_load_object("epstein_top_5.pkl", convert = TRUE)
+
+epstein_top_5.df<-tibble(Rank, `Top Emotions` = c("approval", "neutral", "disapproval", "amusement", "annoyance"), `Percentage` = c(0.5934553742408752, 0.537614643573761, 0.5151087045669556, 0.42648136615753174, 0.4213102161884308))
+epstein_top_5.df
+
+epstein_top_5.df<-epstein_top_5.df|>
+  mutate(Type = case_when(
+          str_detect(`Top Emotions`, regex(pos_emotions)) == TRUE ~ "Positive",
+          str_detect(`Top Emotions`, regex(neg_emotions)) == TRUE ~ "Negative",
+          TRUE ~ "Neutral"))
+
+
+(epstein_gg<-ggplot(epstein_top_5.df, aes(x=`Percentage`, y=reorder(`Top Emotions`, `Percentage`), fill=Type))+
+    geom_col()+
+    scale_fill_manual(values = c("Positive" = "green",
+                                 "Negative" = "red",
+                                 "Neutral" = "grey"))+
+    labs(y="", x="Jeffrey Epstein", fill="Emotion Type")+
+    theme_classic()+
+    theme(legend.position = "none"))
+
+
+###################################################################################
+
+
+```
+
+```{r, cache=TRUE}
+
+immig_top_5.r <- py_load_object("immig_top_5.pkl", convert = TRUE)
+
+immig_top_5.df<-tibble(Rank, `Top Emotions` = c("neutral", "approval", "optimism", "realization", "confusion"), `Percentage` = c(0.5864419937133789, 0.5850784778594971, 0.47329166531562805, 0.47136953473091125, 0.470197856426239))
+immig_top_5.df
+
+immig_top_5.df<-immig_top_5.df|>
+  mutate(Type = case_when(
+          str_detect(`Top Emotions`, regex(pos_emotions)) == TRUE ~ "Positive",
+          str_detect(`Top Emotions`, regex(neg_emotions)) == TRUE ~ "Negative",
+          TRUE ~ "Neutral"))
+
+
+(immig_gg<-ggplot(immig_top_5.df, aes(x=`Percentage`, y=reorder(`Top Emotions`, `Percentage`), fill=Type))+
+    geom_col()+
+    scale_fill_manual(values = c("Positive" = "green",
+                                 "Negative" = "red",
+                                 "Neutral" = "grey"))+
+    labs(y="Top Emotions", x="Immigration", fill="Emotion Type")+
+    theme_classic()+
+    theme(legend.position = "none"))
+
+
+
+```
+
+```{r, cache=TRUE}
+
+econ_top_5.r <- py_load_object("econ_top_5.pkl", convert = TRUE)
+
+econ_top_5.df<-tibble(Rank, `Top Emotions` = c("approval", "optimism", "neutral", "desire", "disapproval"), `Percentage` = c(0.5647450685501099, 0.5602922439575195, 0.4999000132083893, 0.4506937563419342, 0.44466495513916016))
+econ_top_5.df
+
+econ_top_5.df<-econ_top_5.df|>
+  mutate(Type = case_when(
+          str_detect(`Top Emotions`, regex(pos_emotions)) == TRUE ~ "Positive",
+          str_detect(`Top Emotions`, regex(neg_emotions)) == TRUE ~ "Negative",
+          TRUE ~ "Neutral"))
+
+
+(econ_gg<-ggplot(econ_top_5.df, aes(x=`Percentage`, y=reorder(`Top Emotions`, `Percentage`), fill=Type))+
+    geom_col()+
+    scale_fill_manual(values = c("Positive" = "green",
+                                 "Negative" = "red",
+                                 "Neutral" = "grey"))+
+    labs(y="Top Emotions", x="Economy", fill="Emotion Type")+
+    theme_classic()+
+    theme(legend.position = "none"))
+
+```
+
+```{r, cache=TRUE}
+
+trump_top_5.r <- py_load_object("trump_top_5.pkl", convert = TRUE)
+
+trump_top_5.df<-tibble(Rank, `Top Emotions` = c("desire", "caring", "optimism", "approval", "neutral"), `Percentage` = c(0.597670316696167, 0.5749280452728271, 0.5682183504104614, 0.544787585735321, 0.518865168094635))
+trump_top_5.df
+
+trump_top_5.df<-trump_top_5.df|>
+  mutate(Type = case_when(
+          str_detect(`Top Emotions`, regex(pos_emotions)) == TRUE ~ "Positive",
+          str_detect(`Top Emotions`, regex(neg_emotions)) == TRUE ~ "Negative",
+          TRUE ~ "Neutral"))
+
+
+(trump_gg<-ggplot(trump_top_5.df, aes(x=`Percentage`, y=reorder(`Top Emotions`, `Percentage`), fill=Type))+
+    geom_col()+
+    scale_fill_manual(values = c("Positive" = "green",
+                                 "Negative" = "red",
+                                 "Neutral" = "grey"))+
+    labs(y="", x="Donald Trump", fill="Emotion Type")+
+    theme_classic()+
+    theme(legend.position = "none"))
+
+
+```
+
+```{r, cache=TRUE}
+
+bernie_top_5.r <- py_load_object("bernie_top_5.pkl", convert = TRUE)
+
+bernie_top_5.df<-tibble(Rank, `Top Emotions` = c("gratitude", "approval", "caring", "admiration", "realization"), `Percentage` = c(0.5698789954185486, 0.5654048919677734, 0.5451491475105286, 0.49513542652130127, 0.4779641926288605))
+bernie_top_5.df
+
+bernie_top_5.df<-bernie_top_5.df|>
+  mutate(Type = case_when(
+          str_detect(`Top Emotions`, regex(pos_emotions)) == TRUE ~ "Positive",
+          str_detect(`Top Emotions`, regex(neg_emotions)) == TRUE ~ "Negative",
+          TRUE ~ "Neutral"))
+
+
+(bernie_gg<-ggplot(bernie_top_5.df, aes(x=`Percentage`, y=reorder(`Top Emotions`, `Percentage`), fill=Type))+
+    geom_col()+
+    scale_fill_manual(values = c("Positive" = "green",
+                                 "Negative" = "red",
+                                 "Neutral" = "grey"))+
+    labs(y="", x="Bernie Sanders", fill="Emotion Type")+
+    theme_classic()+
+    theme(legend.position = "none"))
+
+```
+
+```{r, cache=TRUE}
+
+harris_top_5.r <- py_load_object("harris_top_5.pkl", convert = TRUE)
+class(harris_top_5.r)
+
+harris_top_5.df<-tibble(Rank, `Top Emotions` = c("disapproval", "annoyance", "neutral", "anger", "approval"), `Percentage` = c(0.574959397315979, 0.5408474206924438, 0.519881010055542, 0.49642184376716614, 0.4693294167518616))
+harris_top_5.df
+
+harris_top_5.df<-harris_top_5.df|>
+  mutate(Type = case_when(
+          str_detect(`Top Emotions`, regex(pos_emotions)) == TRUE ~ "Positive",
+          str_detect(`Top Emotions`, regex(neg_emotions)) == TRUE ~ "Negative",
+          TRUE ~ "Neutral"))
+
+
+(harris_gg<-ggplot(harris_top_5.df, aes(x=`Percentage`, y=reorder(`Top Emotions`, `Percentage`), fill=Type))+
+    geom_col()+
+    scale_fill_manual(values = c("Positive" = "green",
+                                 "Negative" = "red",
+                                 "Neutral" = "grey"))+
+    labs(y="", x="Kamala Harris", fill="Emotion Type")+
+    theme_classic()+
+    theme(legend.position = "none"))
+
+```
+
+```{r, cache=TRUE}
+
+vance_top_5.r <- py_load_object("vance_top_5.pkl", convert = TRUE)
+
+vance_top_5.df<-tibble(Rank, `Top Emotions` = c("realization", "neutral", "approval", "disapproval", "annoyance"), `Percentage` = c(0.5449422001838684, 0.5280384421348572, 0.5057730078697205, 0.4947986304759979, 0.48550260066986084))
+vance_top_5.df
+
+vance_top_5.df<-vance_top_5.df|>
+  mutate(Type = case_when(
+          str_detect(`Top Emotions`, regex(pos_emotions)) == TRUE ~ "Positive",
+          str_detect(`Top Emotions`, regex(neg_emotions)) == TRUE ~ "Negative",
+          TRUE ~ "Neutral"))
+
+
+(vance_gg<-ggplot(vance_top_5.df, aes(x=`Percentage`, y=reorder(`Top Emotions`, `Percentage`), fill=Type))+
+    geom_col()+
+    scale_fill_manual(values = c("Positive" = "green",
+                                 "Negative" = "red",
+                                 "Neutral" = "grey"))+
+    labs(y="", x="JD Vance", fill="Emotion Type")+
+    theme_classic()+
+    theme(legend.position = "none"))
+
+```
+
+```{r, cache=TRUE}
+
+mamdani_top_5.r <- py_load_object("mamdani_top_5.pkl", convert = TRUE)
+
+mamdani_top_5.df<-tibble(Rank, `Top Emotions` = c("confusion", "curiosity", "surprise", "neutral", "embarrassment"), `Percentage` = c(0.6896214485168457, 0.6667504906654358, 0.5874908566474915, 0.4543423354625702, 0.444123774766922))
+mamdani_top_5.df
+
+mamdani_top_5.df<-mamdani_top_5.df|>
+  mutate(Type = case_when(
+          str_detect(`Top Emotions`, regex(pos_emotions)) == TRUE ~ "Positive",
+          str_detect(`Top Emotions`, regex(neg_emotions)) == TRUE ~ "Negative",
+          TRUE ~ "Neutral"))
+
+
+(mamdani_gg<-ggplot(mamdani_top_5.df, aes(x=`Percentage`, y=reorder(`Top Emotions`, `Percentage`), fill=Type))+
+    geom_col()+
+    scale_fill_manual(values = c("Positive" = "green",
+                                 "Negative" = "red",
+                                 "Neutral" = "grey"))+
+    labs(y="", x="Zohran Mamdani", fill="Emotion Type")+
+    theme_classic()+
+    theme(legend.position = "none"))
+
+```
+
+```{r, cache=TRUE}
+
+newsom_top_5.r <- py_load_object("newsom_top_5.pkl", convert = TRUE)
+
+newsom_top_5.df<-tibble(Rank, `Top Emotions` = c("disapproval", "annoyance", "neutral", "anger", "approval"), `Percentage` = c(0.5764488577842712, 0.544259786605835, 0.5164526104927063, 0.49627313017845154, 0.4732630252838135))
+newsom_top_5.df
+
+newsom_top_5.df<-newsom_top_5.df|>
+  mutate(Type = case_when(
+          str_detect(`Top Emotions`, regex(pos_emotions)) == TRUE ~ "Positive",
+          str_detect(`Top Emotions`, regex(neg_emotions)) == TRUE ~ "Negative",
+          TRUE ~ "Neutral"))
+
+
+(newsom_gg<-ggplot(newsom_top_5.df, aes(x=`Percentage`, y=reorder(`Top Emotions`, `Percentage`), fill=Type))+
+    geom_col()+
+    scale_fill_manual(values = c("Positive" = "green",
+                                 "Negative" = "red",
+                                 "Neutral" = "grey"))+
+    labs(y="", x="Gavin Newsom", fill="Emotion Type")+
+    theme_classic()+
+    theme(legend.position = "none"))
+
+```
+
+```{r, cache=TRUE}
+
+musk_top_5.r <- py_load_object("musk_top_5.pkl", convert = TRUE)
+
+musk_top_5.df<-tibble(Rank, `Top Emotions` = c("surprise", "excitement", "admiration", "joy", "pride"), `Percentage` = c(0.7206533551216125, 0.6698361039161682, 0.6379219889640808, 0.5782098770141602, 0.5171183943748474))
+musk_top_5.df
+
+musk_top_5.df<-musk_top_5.df|>
+  mutate(Type = case_when(
+          str_detect(`Top Emotions`, regex(pos_emotions)) == TRUE ~ "Positive",
+          str_detect(`Top Emotions`, regex(neg_emotions)) == TRUE ~ "Negative",
+          TRUE ~ "Neutral"))
+
+
+(musk_gg<-ggplot(musk_top_5.df, aes(x=`Percentage`, y=reorder(`Top Emotions`, `Percentage`), fill=Type))+
+    geom_col()+
+    scale_fill_manual(values = c("Positive" = "green",
+                                 "Negative" = "red",
+                                 "Neutral" = "grey"))+
+    labs(y="", x="Elon Musk", fill="Emotion Type")+
+    theme_classic()+
+    theme(legend.position = "none"))
+
+```
+
+```{r}
+
+library(gridExtra)
+
+grid.show.layout(grid.layout(nrow=2, ncol=5))
+
+emot_grid<-grid.arrange(econ_gg, trump_gg, vance_gg, epstein_gg, musk_gg,
+             immig_gg, harris_gg, bernie_gg, mamdani_gg, newsom_gg,
+             nrow=2, ncol=5)
+
+saveRDS(emot_grid, "emot_grid.rds")
+
+save.image()
+```

@@ -1,0 +1,61 @@
+---
+title: "Jesse Skolnik // 727 Final Project"
+format: html
+editor: visual
+---
+
+### **Background:**
+
+We live in a very politically divided and polarized world, and those fault lines are more clear online than anywhere else. As a consequence, political violence is on the rise in the United States, and the language we use to describe those with whom we disagree is indicative of the level of respect and humanity we grant them. I sought to explore the emotional tendencies of discussions about various political figures and policy areas on Reddit in order to ascertain which of these topics were eliciting the strongest negative reactions from people.
+
+### **Methods:**
+
+In order to conduct this data exploration, I first pulled the top posts from r/Politics from the last year using the RedditExtractor package in R. I then subset the data into dataframes of posts featuring one of two major political topics (immigration and the economy) or important political figures (Donald Trump, Kamala Harris, JD Vance, Bernie Sanders, Jeffrey Epstein, Zohran Mamdani, Elon Musk, and Gavin Newsom). I chose the former because they were the key issues of the 2024 Presidential Campaign, and the latter because they are some of the most salient contemporary political figures from across the political spectrum. You could argue that Epstein does not fit into this category, but his crimes and the associated Epstein Files have been one of the most viral political topics in years, and many of the top posts on the subreddit were about them.
+
+I then used the RobertaLargeGeoEmotions huggingface model trained on Reddit data to compare the comments on posts about these topics, and also calculated average tokens per topic. While the results are by no means conclusive, they do indicate a marked difference in the types of emotions expressed in each subset.
+
+For the other visualizations, I averaged the number of tokens in each topic, and then found the dates of comments for select topics.
+
+### **Results:**
+
+Below in Figure 1 are bar graphs displaying the top 5 predicted emotions that are expressed in the sampled comments from each topic subset. Positive emotions are colored green, negative emotions are colored red, and neutral is grey.
+
+It is evident that the emotional patterns are not consistent throughout the graphs, which indicates that there may be some truth to the hypothesis  that different figures and topics evoke different emotions. However, as a point of caution when interpreting the results, the emotions listed are not necessarily in relation to the figure themself, but rather the circumstances surrounding them that the post is about. For example, it does not track that Redditors would have that many positive things to say about Jeffrey Epstein, but they may speak highly of actions being taken to bring the truth to light regarding his crimes and connections.
+
+With that in mind, some of the trends observed are expected. Comments about Bernie Sanders related posts are primarily expressing gratitude, caring, and admiration, which makes sense given that Reddit tends to lean leftwards politically and because Bernie is a particularly beloved figure on the left. And the emotions surrounding Zohran Mamdani (confusion, curiosity, surprise) are all associated with novelty and new phenomena, which is very emblematic to Mamadani's rise to prominence and victory of the New York City mayoralty.
+
+Fascinatingly, Kamala Harris and Gavin Newsom's predicted emotions are almost identical and share the same top 5 and top 5 order. This warrants further study.
+
+**Figure 1: Top 5 Emotions Expressed in each Topic**
+
+![](EmotionGrid.png)
+
+Figure 2 summarizes the average number of words per comment in each topic in order to ascertain if there were any sizable differences in this aspect of the posts. It seems that posts about Kamala Harris and Bernie Sanders featured the longest comments (48.8 and 44.1 words respectively), while every other topic ranged from 30.7 to 39.3 average words.
+
+**Figure 2: Average Words per Comment per Topic**
+
+|             |                     |
+|-------------|---------------------|
+| **Topic:**  | **Average Tokens:** |
+| Economy     | 33.6                |
+| Immigration | 39.3                |
+| Trump       | 35.6                |
+| **Harris**  | **48.8**            |
+| Vance       | 30.7                |
+| **Sanders** | **44.1**            |
+| Epstein     | 33.9                |
+| Mamdani     | 32.5                |
+| Musk        | 36.9                |
+| Newsom      | 33.7                |
+
+Figure 3 demonstrates the timeline of when comments were being left for the top posts of the last year. These were relatively consistent, with spikes in early April, late June, and mid October. These make sense as high points, given that April 2nd is when Donald Trump gave his famous/infamous Liberation Day speech announcing mass tariffs on countries around the world, June saw conflict between Israel and Iran, with the US bombing an Iranian military facility, and October saw the run up to the 2025 US midterm elections in full swing.
+
+Among only comments on Donald Trump related posts, the dates are also quite spread evenly, with similar high points. This makes sense, as r/Politics is an American-centric subreddit and as a result, Trump will be referenced almost constantly when important issues are in the news. Comments on Jeffrey Epstein and Zohran Mamdani related posts, on the other hand, are far more concentrated in the second half of the year, when the Epstein files and Mamdani's primary and general election wins were in the news.
+
+**Figure 3: Timeline for the Comments of Select Topics**
+
+![](Comment_Dates.png)
+
+### **Analysis/Further Research:**
+
+Going forward, more research should be done to determine more directly the types of emotions different political figures and issues, and whether certain characteristics of a person impact this emotional response. Additionally, some sort of cluster analysis of the emotions, or the tokens, in these type of Reddit comments would be an incredibly useful insight into the nature of their connections to each other.
